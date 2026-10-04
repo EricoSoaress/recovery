@@ -1,0 +1,146 @@
+# Inventário de Evidências — `C:\EVIDENCIA_POP`
+
+**Projeto AUDITORIA** · Perícia do ataque ao POP-SERVER-02 (Pop Clínica) · Última atualização: **04/10/2026 (v5)**
+Operador: Erico (PJ/TI). Estação de perícia: MOM-ESC-TI-01 (`tecnologia`) / pc-erico.
+
+> Documento de **controle de cadeia de custódia**: lista tudo o que já foi coletado, de qual mídia, os scripts executados e os relatórios gerados. Consultar antes de refazer qualquer coleta/varredura. Nenhum valor de credencial é reproduzido aqui.
+>
+> **Mapa de discos (pc-erico):** `C:` = pc-erico · `D:` = antigo **C:** do servidor (sistema, legível) · `E:` = antigo **D:** do servidor (dados, bloqueado). Servidor em **workgroup** (sem AD no ataque) → sem escrow automático.
+
+---
+
+## 1. Mídias de origem (fontes das cópias)
+
+| Mídia | Descrição | Cópia/Imagem em `EVIDENCIA_POP` |
+|---|---|---|
+| **SSD MOM-ESC-TI-01** | Kingston SA400S37240G 240 GB, SN 50026B7282E567EA — máquina de origem (`MOMEACAI\tecnologia` / perfil `maikon.doglas`) | Imagem crua `PhysicalDrive0.raw` em `D:\COPIA DISCO C MOM-ESC-TI-01` (**SHA-256 95b9ae8f…b69a**, 0 erros) |
+| **Disco POP-SERVER-02** | Servidor atacado (BitLocker malicioso no volume `E7D36899`) | `COPIA_DISCO_D\` |
+| **Imagem montada (Arsenal)** | A `.raw` da MOM montada read-only | lida ao vivo (não recopiada) |
+| **Pendrive de perícia** | Coleta primária da MOM (`ORIGINAIS` com hash) | `pen mom\` |
+| **Conta Microsoft (Flávio)** | `flavio.oliveira@popclinica.com.br` — prints de `account.microsoft.com` | verificada (ver §5) |
+
+---
+
+## 2. Scripts executados (PowerShell) — `EVIDENCIA_POP` (raiz)
+
+| Script | Função |
+|---|---|
+| `coleta_MOM_disco_C.ps1` | Aquisição do C: da MOM — modo Imagem (`\\.\PhysicalDrive0` → .raw + SHA-256) ou Arquivos (VSS + robocopy /B) |
+| `Coleta_MOM_completa.ps1` | Coleta ampla da MOM |
+| `copia_perfil_maikon.ps1` | Cópia do perfil do atacante (modo backup /B) → `MOM_maikon` |
+| `coleta_rastros_MOM.ps1` | Notepad TabState, Timeline, AnyDesk, TeamViewer → `MOM_rastros` |
+| `carve_extra_MOM.ps1` | hiberfil + Chrome Sessions/Session Storage/Local Storage/IndexedDB + crash dumps → `MOM_extra` / `extra_achados.txt` |
+| `carve_senha_chatgpt.ps1` | Carve de pagefile/hiberfil por frases do ChatGPT (senha de 24 chars) → `senha_chatgpt_achados.txt` |
+| `carve_v3_universal.ps1` | **Scanner robusto corrigido** (lê arquivo inteiro) — senha 24 chars + chave E7D36899 → `carve_v3_achados.txt` |
+| `carve_chave_pagefile.ps1` / `_v2.ps1` | Carve do pagefile pela chave de 48 dígitos → `pagefile_chave_achados.txt` |
+| `scan_pagefile_chave.ps1` | Scan de pagefile pela chave |
+| `carve_chave_imagem_MOM.ps1` | Carve da imagem `.raw` da MOM (chave/ID/datastore) → `carve_imagem_MOM_achados.txt` |
+| `Varredura_chave_D.ps1` | Varredura da chave no disco do servidor (D) |
+| `Varredura_chave_Windows_edb.ps1` | Varredura no índice de busca `Windows.edb` → `SAIDA_edb\` |
+| `Buscar-ChaveBitLocker.ps1` (v1) | Busca da chave no disco — **INVÁLIDA** (bug `-Include`: extensão sem `*`, falso negativo). Manter só como histórico |
+| `Buscar-ChaveBitLocker-v2.ps1` | **v2 corrigida** (extensões `*`, seleção por tamanho, multi-encoding ASCII+UTF-16, prioriza EMERGENCIA) — **usar esta** |
+| `busca_cyberfear.ps1` | Busca por indícios de extorsão/"cyberfear" → `busca_cyberfear.txt` |
+| `entropia_E.ps1` | Análise de entropia (identificar arquivos cifrados) → `entropia_E.csv` |
+| `copia_forense_D.ps1` | Cópia forense do disco do servidor → `COPIA_DISCO_D` |
+| `relatorio_disco_D.ps1` | Inventário do disco do servidor → `RELATORIO_DISCO_D` |
+| `unlock_bitlocker_wordlist.ps1` | Tentativa de unlock BitLocker por wordlist |
+
+**Em `pen mom\`:** `CAPTURA_PRIMARIA_MOM.ps1`, `Coleta_tsclient_MOM.ps1`, `PERICIA_MOM.ps1` + `ConsoleHost_history.txt`, `export.txt`, `exrport2.txt` (estes dois contêm o ID só porque definem `$ids='E7D36899|F68473D0'` — **falso positivo**).
+
+### Scripts de análise rodados na sessão (nuvem, não ficam no disco)
+Parse de `.evtx` (EventIDs 4624/4625/4648/4672/4688/4720/4725/4726/1102/1074/6005/6008/7045), `bmc-tools` (cache de bitmap RDP), OCR dos tiles (tesseract), parse de hives (regipy), parse do histórico do Chrome (SQLite).
+**Sessão .edb + integridade:** parse ESE do `Windows.edb` (pyesedb/`esedbexport`, `esentutl /mh` = Dirty Shutdown); parse de `System.evtx`/`Application.evtx` (7000/7031/7034/98 + PostgreSQL).
+**Sessão transferência/senhas (04/10):** parse UTF-16 do `file_transfer_trace.txt` (AnyDesk, todas as datas); regipy nos NTUSER (servidor + MOM): `OpenSavePidlMRU`, `LastVisitedPidlMRU`, `Terminal Server Client`, `RunMRU`, `TypedPaths`, `RecentDocs`.
+
+---
+
+## 3. Relatórios e saídas geradas
+
+| Arquivo | Conteúdo |
+|---|---|
+| `carve_imagem_MOM_achados.txt` | Achados do carve da imagem .raw da MOM |
+| `pagefile_chave_achados.txt` | Carve do pagefile pela chave de 48 díg — **negativo** (359 falsos positivos) |
+| `senha_chatgpt_achados.txt` | Carve por frases do ChatGPT: pagefile MOM (só UI Edge), pagefile servidor (I/O 0,5 GB), **hiberfil MOM negativo** |
+| `extra_achados.txt` | hiberfil/Sessions/Storage/dumps — IndexedDB do ChatGPT tem o **prompt**, nunca a resposta |
+| `carve_v3_achados.txt` | **Rescan do pagefile do servidor (9,1 GB lidos, bug corrigido) — NEGATIVO**: 0 chave, 0 senha de 24; 1.344 hits = falsos positivos. **Achado lateral:** rastro `.tmp.driveupload` (Google Drive) em `Documentos Compartilhados` |
+| `SAIDA_edb\` | `edb_scan_*.txt`, `edb_hits_*.txt` (só o **nome** do arquivo), `page_hit.bin` / `page_hit2_U16.txt` (metadado) |
+| `busca_cyberfear.txt` | Indícios de extorsão |
+| `entropia_E.csv` | Entropia do E: — 14% cifrado, 86% zeros, 0% texto claro |
+| `HASHES_completo.csv`, `HASHES_carving.csv`, `HASHES_search.csv`, `HASHES_coleta2.txt` | SHA-256 de custódia das coletas |
+| `usn_D.csv` (+ `usn_D_info.txt`) | **USN journal do servidor** — criou `EMERGENCIA\bitlocker.txt` 01/10 05:37 (export de eventos, não a chave) |
+| `RELATORIO_DISCO_D\` | `D_COMPLETO.log`, `D_DIRETORIOS.txt`, `D_perfil_Administracao.log`, `RESUMO.txt` |
+| `BitLocker_Busca_20261003_094634\` (v1, inválida) e `_100337\` (141.034 arquivos, 0 ocorrência) | Buscas BitLocker |
+| `carving\` | Binários extraídos: `CHAVE_UTF16_*.bin`, `ID_UTF16_*.bin`, `achados.csv`, `transcript` |
+| `copia_log.txt` | Log do robocopy (77 MB) |
+| `wordlist_bitlocker.txt` (4.320) / `wordlist_MOM_adicoes.txt` (**55.160**) | Wordlists do ataque de senha |
+| `hashcat_bitlocker_instrucoes.txt` | Passo a passo do ataque de senha (modo 22100) |
+| `comandos_coleta_MOM.txt` / `perfis_D.txt` | Cola de comandos; perfis do servidor |
+| `EVIDENCIA_RDP_POP-SERVER-02.png` | Montagem de 32 tiles do cache RDP (em `EVIDENCIA_MOM`) |
+
+> Vazios/placeholder: `HASHES_hives.txt`, `hashes.txt`, `usn_D_ACHADOS.txt` (0 bytes). **Becos sem saída (04/10):** `MOM_maikon\Documents\Credenciais.docx` (vazio, 2 KB) e `MOM_maikon\Downloads\E-mails Momê Açaí - HostGator.xlsx` (só inventário de endereços de e-mail, sem senhas).
+
+### Documentos do projeto (claude.ai) — relatórios de sessão
+- `linha_do_tempo_MASTER_AUDITORIA.md` — linha do tempo unificada (mestre).
+- `relatorio_sessao_2026-10-04_consolidado.md`, `laudo_sessao_20261004_bitlocker_POP-SERVER-02.md`, `relatorio_sessao_edb_recuperacao_dados.md`.
+- ` Claude analise windows edb chave bitlocker · MD`, `Claude sessao busca chave escrow cache rdp · MD`, ` Claude laudo forense mom esc ti 01 · MD`.
+- `Laudo Técnico — Incidente BitLocker POP-SERVER-02` (Claude Doc) — para encaminhamento jurídico.
+
+---
+
+## 4. Evidência copiada de outras mídias (pastas)
+
+| Pasta | Origem | Conteúdo principal |
+|---|---|---|
+| `COPIA_DISCO_D\` | Disco POP-SERVER-02 | SO completo + `pagefile.sys` (9,1 GB), `swapfile.sys`, `Recovery`, `$SysReset`, `$Recycle.Bin`, `inetpub`, `agendamentos-api`, **`EMERGENCIA\`** (`bitlocker.txt`, `reinicios.txt`) |
+| `MOM_maikon\` | Perfil `maikon.doglas` (MOM) | `Chrome`, `Edge`, `Desktop`, `Downloads`, `Documents`, `Recent`, `RecycleBin`, `StickyNotes`, `profile_root` |
+| `MOM_rastros\` | Perfil `maikon.doglas` (MOM) | `Notepad`, `Timeline`, `AnyDesk_user`+`AnyDesk_sys`, `TV_logs`+`TV_user\MRU` |
+| `MOM_extra\` | Perfil `maikon.doglas` (MOM) | Chrome `Sessions`/`Session Storage`/`Local Storage`/`IndexedDB`, `CrashDumps`, `WER`, `Minidump` |
+| `MOM_hib\` | SSD MOM | `hiberfil.sys` (6,1 GB, snapshot 03/10) |
+| `MOM_SUPORTE_TI\` (⏳ a coletar) | MOM `C:\SUPORTE E TI\` | **Cofre de senhas do atacante** (ver §5) |
+| `hives\` / `hives_POP02\` / `sistema\` | perfis + sistema POP-SERVER-02 | NTUSER/UsrClass + SAM/SECURITY/SOFTWARE/SYSTEM |
+| `eventos\` / `logs windows\` | POP-SERVER-02 | `.evtx` + logs CBS + Defender |
+| `search\` + `SAIDA_edb\` + `Windows.edb`/`Windows_edb.zip` | POP-SERVER-02 | Índice de busca + saídas |
+| `lixeira\` | POP-SERVER-02 | `$Recycle.Bin` por SID |
+| `EVIDENCIA_MOM\` | Perícia inicial MOM (02/10) | cache RDP, auditoria, **`ORIGINAIS`** (com hash) |
+| `EVIDENCIA_MOM-ESC\` / `desktop_adm\` / `edge\` / `pen mom\` / `Temp\` | diversos | — |
+
+---
+
+## 5. Status das linhas de investigação
+
+| Linha | Resultado |
+|---|---|
+| Reset da máquina 30/09 16:57 | ✅ confirmado (consent.exe; falhou 16:57:45, 0x80070539) |
+| Chave de recuperação (48 díg) | ❌ não recuperável (TXT no SSD + TRIM) |
+| **Escrow da chave (AD / conta Microsoft / nuvem)** | ❌ **nenhum** — sem 845/846/847; workgroup; conta do **Flávio** não lista a E7D36899 |
+| Senha BitLocker (0x8, `F68473D0`) | 🔎 gerada no ChatGPT (24 chars, 17:08) — **só no servidor da OpenAI** |
+| Premeditação (buscas/IA) | ✅ documentada (histórico Chrome) |
+| IndexedDB ChatGPT | ✅ guarda o **prompt**; nunca a resposta (`no-store`) |
+| Clipboard / Notepad / Timeline / Sessions / dumps / hiberfil MOM | ❌ negativos |
+| **Windows.edb (índice de busca)** | ❌ ENCERRADA — só o nome do arquivo; sem `AutoSummary` |
+| **pagefile do servidor (9,1 GB)** | ❌ NEGATIVO (04/10) — leu tudo (bug corrigido); 0 chave, 0 senha; hits = falsos positivos |
+| **Transferência de arquivo MOM↔servidor (RDP/AnyDesk)** | ❌ **sem evidência** — AnyDesk só SiTef (`CONFITLS`); save-dialog do servidor só o TXT da chave **local** (sem `\\tsclient`); a senha cruzou como **texto no clipboard** do RDP (não gera arquivo) |
+| Exfiltração internet (janela ataque) | ❌ sem evidência (só config SiTef) |
+| Integridade do PostgreSQL (SINTEC) no D: | ✅ indício forte de que **NÃO foi apagado** |
+| Atribuição à MOM / `maikon.doglas` | ✅ robusta (hash 1029, RDP 177.54.238.76↔POP, logs sem 1102) |
+| 🔑 **Cofre de senhas do atacante — `C:\SUPORTE E TI\` (MOM)** | ⏳ **PENDENTE COLETA** (→ `MOM_SUPORTE_TI`). Contém `Login e acessos.txt`, `Senhas e e-mails.novo.txt`, `Teste de Senhas.kdbx` (KeePass). **Candidato nº 1 à senha de 24 chars** — não estava no perfil, por isso nunca foi copiado |
+| Pendrive (`pen mom`) — arquivo da chave | ⏳ pendente (USB não tem TRIM) |
+| Cache RDP `Cache0001.bin` (tela da chave) | ⏳ pendente — perícia licenciada |
+| Prefetch / SRUM / logs AnyDesk (quem operava) | ⏳ pendente |
+
+**Achados laterais:**
+- 🎯 **Google Drive sync:** `.tmp.driveupload` em `Documentos Compartilhados` → possível cópia na nuvem dos documentos trancados (checar conta Google da clínica).
+- PDFs no Edge `BBFMA 07-2026.pdf` / `AMEX 06-2026.pdf` (checar origem).
+- `.pfx` do SINTEC com senha no nome do arquivo (`D:\Program Files (x86)\SINTEC\certificado\`).
+
+---
+
+## 6. Próximos passos sugeridos
+1. 🔑 **Coletar e ler `C:\SUPORTE E TI\` da imagem da MOM** (`MOM_SUPORTE_TI`): `Login e acessos.txt` e `Senhas e e-mails.novo.txt` (texto puro — pode conter a senha de 24 chars); `Teste de Senhas.kdbx` → `keepass2john` + `hashcat -m 13400` (a senha-mestra pode estar nos `.txt`).
+2. 🎯 **Checar o Google Drive da clínica** (sync dos `Documentos Compartilhados`) — possível cópia intacta na nuvem.
+3. **Restaurar o backup do sintec1 de 21/08** (defasagem ~40 dias) — caminho operacional imediato.
+4. **Imagem setor a setor** do E: + metadados BitLocker (`bdeinfo`, RO) + mapa de entropia → regiões em texto claro p/ carving (com perito).
+5. **Varredura do pendrive** (`pen mom`) por `*Recovery Key*E7D36899*.txt`.
+6. **Cache RDP `Cache0001.bin`** por perícia licenciada.
+7. **Acesso autorizado à conta ChatGPT** `chatgpt-mome@momeacai.com.br` (máquina limpa + autorização da Wanessa).
+8. **BO + jurídico/LGPD** (dados de saúde, art. 11; Lei 12.737/2012) e **contenção** (girar credenciais, tirar RDP da borda, caçar persistência, escrow BitLocker no AD, corrigir RPO de backup).
